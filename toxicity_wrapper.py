@@ -4,22 +4,23 @@ import pandas as pd
 
 
 class ToxicityClassifier:
-    def __init__(self, model_paths, max_features=200000, sequence_length=1800):
+    def __init__(self, model_path, max_features=200000, sequence_length=1800):
         """
-        Initializes the classifier with multiple models and a text vectorizer.
+        Initializes the classifier with a single multi-label model and a text vectorizer.
 
         Args:
-            model_paths (dict): A dictionary where keys are labels (e.g., 'toxic')
-                                and values are paths to the respective models.
-            max_features (int): Maximum number of features for the text vectorizer.
-            sequence_length (int): Length of output sequences from the vectorizer.
+            model_path (str): Path to the multi-label classification model.
+            max_features (int): Max number of words in the vocabulary.
+            sequence_length (int): Output length of the vectorized sequence.
         """
-        # Load models
-        self.models = {label: tf.keras.models.load_model(path) for label, path in model_paths.items()}
+        # Load the multi-label model
+        self.model = tf.keras.models.load_model(model_path)
 
-        # Load dataset for adapting the vectorizer
+        # Define label names corresponding to output neurons
+        self.labels = ['toxic', 'obscene', 'threat', 'insult', 'identity hate']
+
+        # Load and prepare data for adapting the vectorizer
         df = pd.read_csv('jigsaw-toxic-comment-classification-challenge/train.csv')
-        df = df.drop(columns=['severe_toxic'])
         X = df['comment_text']
 
         # Initialize and adapt the text vectorizer
@@ -30,32 +31,31 @@ class ToxicityClassifier:
 
     def predict(self, comment):
         """
-        Predicts the attributes of a comment using all loaded models.
+        Predicts the probabilities for each label from the comment.
 
         Args:
             comment (str): The comment to classify.
 
         Returns:
-            dict: A dictionary of labels and their corresponding predictions.
+            dict: A dictionary of labels with their predicted probabilities.
         """
-        # Vectorize the comment
-        vectorized_comment = self.vectorizer([comment])
+        # Vectorize the input comment
+        vectorized = self.vectorizer([comment])
+        probs = self.model.predict(vectorized, verbose=0)[0]
 
-        # Get predictions from all models
-        predictions = {label: model.predict(vectorized_comment)[0][0] for label, model in self.models.items()}
-
-        return predictions
+        # Map predictions to labels
+        return dict(zip(self.labels, probs))
 
     def classify(self, comment, threshold=0.5):
         """
-        Classifies a comment based on prediction thresholds.
+        Returns the list of labels whose probability exceeds the threshold.
 
         Args:
             comment (str): The comment to classify.
-            threshold (float): The decision threshold for each label.
+            threshold (float): Minimum confidence to flag a label.
 
         Returns:
-            list: A list of labels where the prediction exceeds the threshold.
+            list: Labels with probability above threshold.
         """
         predictions = self.predict(comment)
         return [label for label, score in predictions.items() if score > threshold]
